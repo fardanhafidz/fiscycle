@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -8,6 +8,7 @@ import {
   X,
   RotateCcw,
   Sparkles,
+  Cpu,
 } from 'lucide-react';
 import { useHydrated } from '@/hooks/useHydrated';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -83,8 +84,24 @@ export function DemoPitchToolbar() {
   const isHydrated = useHydrated();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [aiEngineStatus, setAiEngineStatus] = useState<'LIVE_FASTAPI' | 'DETERMINISTIC_FALLBACK'>('DETERMINISTIC_FALLBACK');
 
   const { currentUser, quickLoginAsRole } = useAuthStore();
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/ai/recommend/POND-01')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data?.mode) {
+          setAiEngineStatus(data.mode);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (!isHydrated) return null;
 
@@ -240,6 +257,27 @@ export function DemoPitchToolbar() {
             >
               <X className="size-4" />
             </button>
+          </div>
+
+          {/* AI Connection Status Badge */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-[8px] bg-slate-50 border border-slate-200/80 text-[10px]">
+            <span className="text-slate-500 font-medium flex items-center gap-1">
+              <Cpu className="size-3 text-[#00629b]" /> Mesin AI:
+            </span>
+            <span
+              className={`font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                aiEngineStatus === 'LIVE_FASTAPI'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}
+            >
+              <span
+                className={`size-1.5 rounded-full ${
+                  aiEngineStatus === 'LIVE_FASTAPI' ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+              />
+              {aiEngineStatus === 'LIVE_FASTAPI' ? 'LIVE (FastAPI v2.1)' : 'Deterministic Fallback'}
+            </span>
           </div>
 
           {/* Navigator Showcase Shortcut */}

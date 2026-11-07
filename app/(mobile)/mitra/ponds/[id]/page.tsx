@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMitraStore } from '@/store/useMitraStore';
@@ -15,6 +15,8 @@ import {
   Sparkles,
   Cpu,
   ArrowLeft,
+  Clock,
+  RefreshCw,
 } from 'lucide-react';
 
 function PondDetailContent() {
@@ -26,6 +28,58 @@ function PondDetailContent() {
 
   const [activeSection, setActiveSection] = useState<'ringkasan' | 'air' | 'pakan' | 'panen' | 'aktivitas'>('ringkasan');
   const [isResolving, setIsResolving] = useState(false);
+
+  // AI Forecaster State (Water Quality Models A/B/C + DSS)
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiMode, setAiMode] = useState<'LIVE_FASTAPI' | 'DETERMINISTIC_FALLBACK' | null>(null);
+  const [forecasts, setForecasts] = useState<Array<{
+    horizon_minutes: number;
+    ph: number;
+    temperature_c: number;
+    turbidity_ntu: number;
+  }>>([
+    { horizon_minutes: 30, ph: 7.35, temperature_c: 28.9, turbidity_ntu: 25.4 },
+    { horizon_minutes: 60, ph: 7.32, temperature_c: 29.1, turbidity_ntu: 26.2 },
+    { horizon_minutes: 120, ph: 7.28, temperature_c: 29.3, turbidity_ntu: 27.5 },
+  ]);
+  const [aiRecommendations, setAiRecommendations] = useState<Array<{
+    title: string;
+    action: string;
+    severity: string;
+  }>>([]);
+
+  const fetchWaterForecast = async () => {
+    if (!pond) return;
+    setAiLoading(true);
+    try {
+      const q = new URLSearchParams({
+        ph: String(pond.telemetry.ph),
+        temperatureC: String(pond.telemetry.temperatureC),
+        turbidityNtu: String(pond.telemetry.turbidityNtu),
+        doMgL: String(pond.telemetry.dissolvedOxygenMgL),
+      });
+
+      const res = await fetch(`/api/ai/recommend/${pond.id}?${q.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAiMode(data.mode);
+        if (data.forecasts?.length) {
+          setForecasts(data.forecasts);
+        }
+        if (data.recommendations?.length) {
+          setAiRecommendations(data.recommendations);
+        }
+      }
+    } catch {
+      // safe fallback
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWaterForecast();
+  }, [pondId, pond?.telemetry.dissolvedOxygenMgL, pond?.status]);
 
   if (!pond) {
     return (
@@ -293,54 +347,117 @@ function PondDetailContent() {
         </div>
       </div>
 
-      {/* Critical Anomaly Notice & Recommendation Card */}
-      {isCritical && (
-        <div id="ai-recommendation-section" className="px-4 mt-4 space-y-2.5">
-          <div className="bg-[#fdebea] border border-[#fecdd3] rounded-[8px] p-3 flex gap-2.5 items-start shadow-xs">
-            <AlertCircle className="size-5 text-[#f34860] shrink-0 mt-0.5" />
-            <div className="text-[11px] flex-1">
-              <p className="font-bold text-[#f34860] text-[12px]">Kondisi Kritis</p>
-              <p className="text-[#173251] mt-0.5 leading-relaxed">
-                Kadar oksigen air rendah. Oksigen terlarut berada di bawah batas aman ({pond.telemetry.dissolvedOxygenMgL} mg/L). Segera tingkatkan aerasi untuk menjaga kelangsungan hidup ikan.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-[#fff3df] border border-[#fde68a] rounded-[10px] p-3 shadow-xs space-y-2">
-            <h3 className="text-[14px] font-bold text-[#173251]">Saran Penanganan</h3>
-            <div className="space-y-1.5 text-[11px] text-[#173251]">
-              <p className="flex items-center gap-1.5">
-                <span className="text-[#14b97c] font-bold">✓</span>
-                <span>Tingkatkan aerasi sekarang (nyalakan kincir tambahan).</span>
-              </p>
-              <p className="flex items-center gap-1.5">
-                <span className="text-[#14b97c] font-bold">✓</span>
-                <span>Kurangi porsi pakan sore 2 jam hingga kadar DO stabil.</span>
-              </p>
-              <p className="flex items-center gap-1.5">
-                <span className="text-[#14b97c] font-bold">✓</span>
-                <span>Pantau kembali kondisi sensor dalam 30 menit.</span>
-              </p>
+      {/* AI Water Forecaster & DSS Diagnostic Section */}
+      <div id="ai-recommendation-section" className="px-4 mt-4 space-y-2.5">
+        <div className="bg-gradient-to-br from-white to-[#f0f8ff] border border-[#b8ddf2] rounded-[10px] p-3.5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className="size-6 rounded-md bg-[#00629b] text-white flex items-center justify-center">
+                <Sparkles className="size-3.5" />
+              </div>
+              <div>
+                <h3 className="text-[13px] font-bold text-[#173251]">
+                  Analisis &amp; Prediksi Kualitas Air (Model A/B/C)
+                </h3>
+                <p className="text-[9px] text-[#8192a5]">
+                  Ensemble ML Horizon 30m, 60m, 120m + DSS Air
+                </p>
+              </div>
             </div>
 
-            <div className="pt-2">
+            <div className="flex items-center gap-1">
+              <span
+                className={`text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  aiMode === 'LIVE_FASTAPI'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                }`}
+              >
+                <Cpu className="size-3" />
+                {aiMode === 'LIVE_FASTAPI' ? 'LIVE FastAPI' : 'Fallback'}
+              </span>
               <button
                 type="button"
-                onClick={handleResolveAlert}
-                disabled={isResolving}
-                className="w-full bg-[#00629b] hover:bg-[#005180] text-white font-bold text-[11px] py-2.5 rounded-[6px] transition active:scale-[0.99] flex items-center justify-center gap-1.5 shadow-sm"
+                onClick={fetchWaterForecast}
+                disabled={aiLoading}
+                className="p-1 rounded-md text-[#00629b] hover:bg-[#e2f3fc] transition disabled:opacity-50"
+                title="Perbarui Prediksi AI"
               >
-                <Sparkles className="size-3.5" />
-                <span>
-                  {isResolving
-                    ? 'Memulihkan Aerasi...'
-                    : 'Terapkan Rekomendasi & Selesaikan Anomali'}
-                </span>
+                <RefreshCw className={`size-3.5 ${aiLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
+
+          {/* Forecast Table 30m / 60m / 120m */}
+          <div className="bg-white border border-[#e7eff4] rounded-[8px] p-2 space-y-1.5">
+            <div className="flex items-center justify-between text-[9px] font-bold text-[#8192a5] border-b border-slate-100 pb-1 px-1">
+              <span>Horizon Prediksi</span>
+              <span>pH Air</span>
+              <span>Suhu (°C)</span>
+              <span>Kekeruhan</span>
+            </div>
+            {forecasts.map((fc) => (
+              <div
+                key={fc.horizon_minutes}
+                className="flex items-center justify-between text-[10px] px-1 py-0.5"
+              >
+                <span className="font-bold text-[#00629b] flex items-center gap-1">
+                  <Clock className="size-3" /> +{fc.horizon_minutes} Menit
+                </span>
+                <span className="font-semibold text-[#173251]">{fc.ph.toFixed(2)}</span>
+                <span className="font-semibold text-[#173251]">{fc.temperature_c.toFixed(1)}°C</span>
+                <span className="font-semibold text-[#173251]">{fc.turbidity_ntu.toFixed(1)} NTU</span>
+              </div>
+            ))}
+          </div>
+
+          {/* DSS Recommendations */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold text-[#173251] block">
+              Rekomendasi Tindakan AI:
+            </span>
+            {aiRecommendations.length > 0 ? (
+              aiRecommendations.map((rec, i) => (
+                <div
+                  key={i}
+                  className={`p-2 rounded-[6px] text-[10px] border flex items-start gap-1.5 ${
+                    rec.severity === 'Kritis'
+                      ? 'bg-rose-50 border-rose-200 text-rose-900'
+                      : rec.severity === 'Perhatian'
+                      ? 'bg-amber-50 border-amber-200 text-amber-900'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  }`}
+                >
+                  <span className="font-bold shrink-0">✓</span>
+                  <div>
+                    <span className="font-bold">{rec.title}: </span>
+                    <span>{rec.action}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-[9.5px] text-[#8192a5]">
+                Parameter pH, Suhu, dan Kekeruhan diproyeksikan dalam rentang aman.
+              </p>
+            )}
+          </div>
+
+          {/* Action button if critical or warning */}
+          {(isCritical || isWarning) && (
+            <button
+              type="button"
+              onClick={handleResolveAlert}
+              disabled={isResolving}
+              className="w-full bg-[#00629b] hover:bg-[#005180] text-white font-bold text-[11px] py-2 rounded-[6px] transition active:scale-[0.99] flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <Sparkles className="size-3.5" />
+              <span>
+                {isResolving ? 'Memulihkan Aerasi...' : 'Terapkan Rekomendasi & Pulihkan DO'}
+              </span>
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Perangkat Terhubung */}
       <div className="px-4 mt-4">
