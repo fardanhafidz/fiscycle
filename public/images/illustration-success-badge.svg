@@ -1,0 +1,7 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="56" height="59" viewBox="0 0 56 59" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="success-badge">
+<path id="Vector" d="M28 59C43.464 59 56 46.464 56 31C56 15.536 43.464 3 28 3C12.536 3 0 15.536 0 31C0 46.464 12.536 59 28 59Z" fill="#078F63"/>
+<path id="Vector_2" d="M28 56C43.464 56 56 43.464 56 28C56 12.536 43.464 0 28 0C12.536 0 0 12.536 0 28C0 43.464 12.536 56 28 56Z" fill="#0CB47C"/>
+<path id="Vector_3" d="M15 28L24 37L42 19" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke="white"/>
+</g>
+</svg>
